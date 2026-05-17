@@ -76,13 +76,20 @@ export default function Detections() {
                     
                     {/* Thumbnail */}
                     <div className="w-full sm:w-48 h-32 bg-muted relative shrink-0 border-r border-border flex items-center justify-center overflow-hidden">
-                      {detection.inputUrl ? (
-                        <img
-                          src={detection.inputUrl}
-                          alt={detection.activityType ?? "detection"}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
+                      {(() => {
+                        const thumb = detection.processedImageUrl ||
+                          (detection.inputUrl && /^https?:\/\//i.test(detection.inputUrl) && !/mjpeg|mjpg|stream|rtsp/i.test(detection.inputUrl)
+                            ? detection.inputUrl : null);
+                        return thumb ? (
+                          <img
+                            src={thumb}
+                            alt={detection.activityType ?? "detection"}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : null;
+                      })()}
+                      {!(detection.processedImageUrl ||
+                        (detection.inputUrl && /^https?:\/\//i.test(detection.inputUrl) && !/mjpeg|mjpg|stream|rtsp/i.test(detection.inputUrl))) && (
                         <div className="absolute inset-0 flex items-center justify-center">
                           {isSuspicious ? (
                             <AlertTriangle className="w-8 h-8 text-destructive opacity-70" />

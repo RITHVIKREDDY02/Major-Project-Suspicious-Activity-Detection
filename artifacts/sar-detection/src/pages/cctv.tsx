@@ -387,6 +387,8 @@ export default function CCTVPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createMutation = useCreateDetection();
+  const createMutationRef = useRef(createMutation);
+  createMutationRef.current = createMutation;
   const { detect, modelReady } = useDetector();
 
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -661,7 +663,46 @@ export default function CCTVPage() {
     };
   }, []);
 
-  async function sendAlert(category: Category, confidence: number) {
+  async function captureFrameAndUpload(): Promise<string | null> {
+    const c = canvasRef.current;
+    if (!c || c.width === 0 || c.height === 0) return null;
+    try {
+      const blob = await new Promise<Blob | null>((resolve) =>
+        c.toBlob(resolve, "image/jpeg", 0.85)
+      );
+      if (!blob) return null;
+      const formData = new FormData();
+      formData.append("file", blob, `cctv-${Date.now()}.jpg`);
+      const res = await fetch(`${BASE}/api/upload`, { method: "POST", body: formData });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.url as string) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function sendAlert(category: Category, confidence: number, reason?: string) {
+    const processedImageUrl = await captureFrameAndUpload();
+    const meta = CATEGORY_META[category];
+    createMutationRef.current.mutate(
+      {
+        data: {
+          inputType: "stream",
+          inputUrl: trimmed,
+          processedImageUrl: processedImageUrl ?? undefined,
+          activityType: category,
+          confidence,
+          status: "suspicious",
+          notes: `Auto-detected CCTV alert: ${trimmed}${reason ? ` — ${reason}` : ""}`,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListDetectionsQueryKey() });
+        },
+      }
+    );
     try {
       const res = await fetch(`${BASE}/api/alerts/call`, {
         method: "POST",
@@ -670,38 +711,43 @@ export default function CCTVPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.whatsapp) {
-        toast({ title: "WhatsApp alert sent!", description: `Alert sent for: ${CATEGORY_META[category].label}` });
+        toast({ title: "WhatsApp alert sent!", description: `Alert sent for: ${meta.label}` });
       }
     } catch { /* silent */ }
   }
 
-  function snapshotAndSave() {
+  async function snapshotAndSave() {
     if (!live) {
       toast({ title: "No live detection yet", description: "Wait a moment for the model to analyze a frame.", variant: "destructive" });
       return;
     }
     const meta = CATEGORY_META[live.category];
-    createMutation.mutate({
-      data: {
-        inputType: "stream",
-        inputUrl: trimmed,
-        activityType: live.category,
-        confidence: live.confidence,
-        status: meta.suspicious ? "suspicious" : "normal",
-        boundingBoxes: JSON.stringify(live.bbox),
-        notes: `Live CCTV: ${trimmed} — ${live.reason}`,
-      }
-    }, {
-      onSuccess: (data) => {
-        toast({ title: "Snapshot saved", description: `${meta.label} logged.` });
-        setSavedResult({ id: data.id, result: live });
-        queryClient.invalidateQueries({ queryKey: getListDetectionsQueryKey() });
-        if (meta.suspicious && live.confidence >= 0.75) {
-          sendAlert(live.category, live.confidence);
-        }
+    const processedImageUrl = await captureFrameAndUpload();
+    createMutation.mutate(
+      {
+        data: {
+          inputType: "stream",
+          inputUrl: trimmed,
+          processedImageUrl: processedImageUrl ?? undefined,
+          activityType: live.category,
+          confidence: live.confidence,
+          status: meta.suspicious ? "suspicious" : "normal",
+          boundingBoxes: JSON.stringify(live.bbox),
+          notes: `Live CCTV: ${trimmed} — ${live.reason}`,
+        },
       },
-      onError: () => toast({ title: "Save failed", variant: "destructive" }),
-    });
+      {
+        onSuccess: (data) => {
+          toast({ title: "Snapshot saved", description: `${meta.label} logged.` });
+          setSavedResult({ id: data.id, result: live });
+          queryClient.invalidateQueries({ queryKey: getListDetectionsQueryKey() });
+          if (meta.suspicious && live.confidence >= 0.75) {
+            sendAlert(live.category, live.confidence, live.reason);
+          }
+        },
+        onError: () => toast({ title: "Save failed", variant: "destructive" }),
+      }
+    );
   }
 
   const meta = live ? CATEGORY_META[live.category] : null;
