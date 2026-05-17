@@ -133,10 +133,10 @@ function detectFire(canvas: HTMLCanvasElement): { isFire: boolean; ratio: number
     isFire,
     ratio,
     bbox: {
-      x: (minX / W) * 100,
-      y: (minY / H) * 100,
-      width: ((maxX - minX) / W) * 100,
-      height: ((maxY - minY) / H) * 100,
+      x: (wMinX / W) * 100,
+      y: (wMinY / H) * 100,
+      width: ((wMaxX - wMinX) / W) * 100,
+      height: ((wMaxY - wMinY) / H) * 100,
       label: "fire",
       confidence: Math.min(0.6 + ratio * 6, 0.97),
     },
@@ -411,6 +411,7 @@ export default function CCTVPage() {
   const [imgSrc, setImgSrc] = useState("");
   const [streamLoaded, setStreamLoaded] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [pnaBypass, setPnaBypass] = useState(false);
   const [tainted, setTainted] = useState(false);
   const [live, setLive] = useState<LiveResult | null>(null);
   const [savedResult, setSavedResult] = useState<{ id: number; result: LiveResult } | null>(null);
@@ -439,21 +440,23 @@ export default function CCTVPage() {
     const isRtsp = trimmed.toLowerCase().startsWith("rtsp://");
     const isCameraHttp = trimmed.toLowerCase().startsWith("http://");
     const siteIsHttps = window.location.protocol === "https:";
+    const siteIsPublicIp = !isLanUrl(window.location.href) &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1";
 
+    // Mixed content: browser will block HTTP camera URLs when site is on HTTPS
     if (siteIsHttps && isCameraHttp) {
       setStreamActive(true);
       setStreamError("HTTPS_BLOCK");
       return;
     }
 
-    const siteIsPublicIp = !isLanUrl(window.location.href) &&
-    window.location.hostname !== "localhost" &&
-    window.location.hostname !== "127.0.0.1";
-
-    if (lan && siteIsPublicIp) {
-    setStreamActive(true);
-    setStreamError("PNA_BLOCK");
-    return;
+    // Private Network Access (PNA): Chrome 104+ blocks requests from public IPs
+    // to private/LAN IPs, even over plain HTTP.
+    if (lan && siteIsPublicIp && !pnaBypass) {
+      setStreamActive(true);
+      setStreamError("PNA_BLOCK");
+      return;
     }
 
     if (lan) {
@@ -476,6 +479,7 @@ export default function CCTVPage() {
     setStreamLoaded(false);
     setStreamError(null);
     setImgSrc("");
+    setPnaBypass(false);
     setLive(null);
     suspiciousStreakRef.current = 0;
     loiteringFramesRef.current = 0;
@@ -819,7 +823,7 @@ export default function CCTVPage() {
                   onError={() => {
                     setStreamError(
                       isLan
-                        ? "Cannot reach camera. Check it's powered on, on the same Wi-Fi, and that the URL is correct."
+                        ? "Cannot reach camera. Confirm the URL is correct and your phone is on the same Wi-Fi as this device."
                         : "Stream unreachable. Check the URL or try a public test feed."
                     );
                   }}
@@ -837,30 +841,66 @@ export default function CCTVPage() {
               )}
 
               {streamActive && streamError && (
-  <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90 gap-2 p-5 text-center overflow-y-auto">
-    <AlertTriangle className="w-8 h-8 text-orange-400 shrink-0" />
-    <p className="text-sm font-mono text-orange-400 font-semibold">STREAM BLOCKED</p>
-    {streamError === "HTTPS_BLOCK" ? (
-      <div className="text-left space-y-2 max-w-xs">
-        <p className="text-xs text-zinc-300 leading-relaxed text-center">
-          Your browser blocks <strong>HTTP</strong> cameras on an <strong>HTTPS</strong> site (mixed content policy).
-        </p>
-        <div className="bg-zinc-800/80 rounded-md p-2.5 space-y-1.5 text-xs text-zinc-300">
-          <p className="text-orange-300 font-semibold uppercase text-[10px] tracking-wider">Option 1 — Tunnel via ngrok (easiest)</p>
-          <p>1. Install ngrok on your PC: <span className="font-mono text-zinc-100">ngrok.com</span></p>
-          <p>2. Run: <span className="font-mono bg-zinc-700 px-1 rounded">ngrok http 192.168.29.151:8080</span></p>
-          <p>3. Use the <span className="font-mono text-green-400">https://…ngrok-free.app</span> URL here</p>
-        </div>
-        <div className="bg-zinc-800/80 rounded-md p-2.5 space-y-1.5 text-xs text-zinc-300">
-          <p className="text-orange-300 font-semibold uppercase text-[10px] tracking-wider">Option 2 — Use HTTP site</p>
-          <p>Access your AWS site over <span className="font-mono text-green-400">http://</span> instead of <span className="font-mono text-red-400">https://</span> — the browser won't block it.</p>
-        </div>
-      </div>
-    ) : (
-      <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">{streamError}</p>
-    )}
-  </div>
-)}
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90 gap-2 p-5 text-center overflow-y-auto">
+                  <AlertTriangle className="w-8 h-8 text-orange-400 shrink-0" />
+                  <p className="text-sm font-mono text-orange-400 font-semibold">STREAM BLOCKED</p>
+                  {streamError === "HTTPS_BLOCK" ? (
+                    <div className="text-left space-y-2 max-w-xs">
+                      <p className="text-xs text-zinc-300 leading-relaxed text-center">
+                        Your browser blocks <strong>HTTP</strong> cameras on an <strong>HTTPS</strong> site (mixed content policy).
+                      </p>
+                      <div className="bg-zinc-800/80 rounded-md p-2.5 space-y-1.5 text-xs text-zinc-300">
+                        <p className="text-orange-300 font-semibold uppercase text-[10px] tracking-wider">Option 1 — Tunnel via ngrok (easiest)</p>
+                        <p>1. Install ngrok: <span className="font-mono text-zinc-100">ngrok.com</span></p>
+                        <p>2. Run: <span className="font-mono bg-zinc-700 px-1 rounded">ngrok http 192.168.29.151:8080</span></p>
+                        <p>3. Paste the <span className="font-mono text-green-400">https://….ngrok-free.app</span> URL here</p>
+                      </div>
+                      <div className="bg-zinc-800/80 rounded-md p-2.5 space-y-1.5 text-xs text-zinc-300">
+                        <p className="text-orange-300 font-semibold uppercase text-[10px] tracking-wider">Option 2 — Use HTTP site</p>
+                        <p>Open your AWS site with <span className="font-mono text-green-400">http://</span> not <span className="font-mono text-red-400">https://</span></p>
+                      </div>
+                    </div>
+                  ) : streamError === "PNA_BLOCK" ? (
+                    <div className="text-left space-y-2 max-w-xs w-full">
+                      <p className="text-xs text-zinc-300 leading-relaxed text-center">
+                        <strong>Chrome's Private Network Access</strong> policy blocks your public site from reaching a LAN camera IP directly.
+                      </p>
+                      <div className="bg-zinc-800/80 rounded-md p-2.5 space-y-1.5 text-xs text-zinc-300">
+                        <p className="text-green-400 font-semibold uppercase text-[10px] tracking-wider">Fix — Tunnel via ngrok (recommended)</p>
+                        <p>1. On the PC connected to your camera's Wi-Fi, install <span className="font-mono text-zinc-100">ngrok.com</span></p>
+                        <p>2. Run: <span className="font-mono bg-zinc-700 px-1 rounded">ngrok http {trimmed.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}</span></p>
+                        <p>3. Paste the <span className="font-mono text-green-400">https://….ngrok-free.app</span> URL here instead</p>
+                      </div>
+                      <div className="bg-zinc-800/80 rounded-md p-2.5 space-y-1.5 text-xs text-zinc-300">
+                        <p className="text-orange-300 font-semibold uppercase text-[10px] tracking-wider">Alternative — disable PNA in Chrome flags</p>
+                        <p>Open <span className="font-mono bg-zinc-700 px-1 rounded">chrome://flags</span> → search <strong>Private Network Access</strong> → set to <strong>Disabled</strong> → relaunch Chrome, then click Try Anyway below</p>
+                      </div>
+                      <button
+                        className="w-full mt-1 py-1.5 text-xs rounded-md border border-zinc-600 text-zinc-400 hover:text-zinc-200 hover:border-zinc-400 transition-colors"
+                        onClick={() => {
+                          setPnaBypass(true);
+                          stopStream();
+                          setTimeout(() => {
+                            setPnaBypass(true);
+                            setStreamLoaded(false);
+                            setStreamError(null);
+                            setLive(null);
+                            const lan2 = isLanUrl(trimmed);
+                            setIsLan(lan2);
+                            const snap = buildSnapshotUrl(trimmed);
+                            setImgSrc(snap + (snap.includes("?") ? "&" : "?") + "_t=" + Date.now());
+                            setStreamActive(true);
+                          }, 50);
+                        }}
+                      >
+                        Try anyway (if you disabled PNA in Chrome flags)
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">{streamError}</p>
+                  )}
+                </div>
+              )}
 
               {!streamActive && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
@@ -890,8 +930,9 @@ export default function CCTVPage() {
             </div>
 
             {tainted && (
-              <div className="text-[10px] text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded-md p-1.5">
-                Browser blocked pixel access (CORS). Enable <strong>Cross-Origin Resource Sharing</strong> in IP Webcam's Server settings.
+              <div className="text-[10px] text-orange-400 bg-orange-500/10 border border-orange-500/30 rounded-md p-2">
+                <strong>AI inference limited</strong> — browser blocked pixel access (CORS). Feed is visible but object detection is disabled.
+                To enable full AI analysis: in the IP Webcam app go to <strong>Settings → Connection preferences</strong> and enable <strong>CORS</strong> (or "Allow cross-origin requests").
               </div>
             )}
 
@@ -909,6 +950,11 @@ export default function CCTVPage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 LAN cameras connect directly from your browser. RTSP & public HTTP go through the server proxy.
+                {window.location.protocol === "https:" && (
+                  <span className="block mt-1 text-orange-400">
+                    Site is on HTTPS — <strong>http://</strong> camera URLs will be blocked by your browser. Use <strong>https://</strong> on your camera, or access this site over plain HTTP.
+                  </span>
+                )}
               </p>
             </div>
 

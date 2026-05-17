@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, detectionsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import {
   CreateDetectionBody,
   GetDetectionParams,
@@ -10,6 +10,10 @@ import {
 
 const router: IRouter = Router();
 
+function getSessionUserId(req: Parameters<Parameters<typeof router.get>[1]>[0]): number | null {
+  return ((req.session as Record<string, unknown>)?.userId as number) ?? null;
+}
+
 router.get("/detections", async (req, res): Promise<void> => {
   const params = ListDetectionsQueryParams.safeParse(req.query);
   if (!params.success) {
@@ -17,13 +21,15 @@ router.get("/detections", async (req, res): Promise<void> => {
     return;
   }
 
-  let query = db.select().from(detectionsTable);
-  const results = await query.orderBy(desc(detectionsTable.createdAt));
+  const sessionUserId = getSessionUserId(req);
+
+  const results = await db
+    .select()
+    .from(detectionsTable)
+    .where(sessionUserId !== null ? eq(detectionsTable.userId, sessionUserId) : undefined)
+    .orderBy(desc(detectionsTable.createdAt));
 
   let filtered = results;
-  if (params.data.userId) {
-    filtered = filtered.filter((d) => d.userId === params.data.userId);
-  }
   if (params.data.activityType) {
     filtered = filtered.filter((d) => d.activityType === params.data.activityType);
   }
@@ -41,8 +47,10 @@ router.post("/detections", async (req, res): Promise<void> => {
     return;
   }
 
+  const sessionUserId = getSessionUserId(req);
+
   const [detection] = await db.insert(detectionsTable).values({
-    userId: parsed.data.userId ?? null,
+    userId: sessionUserId ?? parsed.data.userId ?? null,
     inputType: parsed.data.inputType,
     inputUrl: parsed.data.inputUrl ?? null,
     inputFilename: parsed.data.inputFilename ?? null,
@@ -65,10 +73,16 @@ router.get("/detections/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const sessionUserId = getSessionUserId(req);
+
+  const whereClause = sessionUserId !== null
+    ? and(eq(detectionsTable.id, params.data.id), eq(detectionsTable.userId, sessionUserId))
+    : eq(detectionsTable.id, params.data.id);
+
   const [detection] = await db
     .select()
     .from(detectionsTable)
-    .where(eq(detectionsTable.id, params.data.id));
+    .where(whereClause);
 
   if (!detection) {
     res.status(404).json({ error: "Detection not found" });
@@ -86,9 +100,15 @@ router.delete("/detections/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const sessionUserId = getSessionUserId(req);
+
+  const whereClause = sessionUserId !== null
+    ? and(eq(detectionsTable.id, params.data.id), eq(detectionsTable.userId, sessionUserId))
+    : eq(detectionsTable.id, params.data.id);
+
   const [detection] = await db
     .delete(detectionsTable)
-    .where(eq(detectionsTable.id, params.data.id))
+    .where(whereClause)
     .returning();
 
   if (!detection) {
