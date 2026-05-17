@@ -1,0 +1,21 @@
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background rounded square -->
+  <rect width="180" height="180" rx="36" fill="#0f172a"/>
+
+  <!-- Shield shape -->
+  <path d="M90 22 L148 46 L148 92 C148 124 90 158 90 158 C90 158 32 124 32 92 L32 46 Z"
+        fill="#1e40af" stroke="#3b82f6" stroke-width="4"/>
+
+  <!-- Camera body -->
+  <rect x="58" y="76" width="52" height="36" rx="6" fill="#93c5fd"/>
+  <!-- Camera lens -->
+  <circle cx="90" cy="94" r="13" fill="#1e40af"/>
+  <circle cx="90" cy="94" r="8" fill="#bfdbfe"/>
+  <circle cx="90" cy="94" r="4" fill="#1e40af"/>
+  <!-- Camera highlight -->
+  <circle cx="93" cy="91" r="2" fill="white" opacity="0.7"/>
+  <!-- Camera notch -->
+  <rect x="104" y="80" width="9" height="6" rx="2" fill="#60a5fa"/>
+  <!-- Recording dot -->
+  <circle cx="65" cy="82" r="4" fill="#ef4444"/>
+</svg>

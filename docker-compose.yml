@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sardb
+      POSTGRES_USER: saruser
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sarpassword}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saruser -d sardb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    environment:
+      DATABASE_URL: postgresql://saruser:${DB_PASSWORD:-sarpassword}@db:5432/sardb
+      SESSION_SECRET: ${SESSION_SECRET:-change-this-to-a-long-random-secret-minimum-32-chars}
+      NODE_ENV: production
+      PORT: 3000
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  uploads_data:

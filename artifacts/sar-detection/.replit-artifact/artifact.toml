@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Suspicious Activity Detection"
+version = "1.0.0"
+id = "artifacts/sar-detection"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22972
+
+[services.development]
+run = "pnpm --filter @workspace/sar-detection run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/sar-detection", "run", "build" ]
+publicDir = "artifacts/sar-detection/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22972"
+BASE_PATH = "/"
