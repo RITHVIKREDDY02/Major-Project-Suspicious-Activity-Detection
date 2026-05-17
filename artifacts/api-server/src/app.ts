@@ -59,7 +59,7 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use("/uploads", express.static(uploadsDir));
 
 if (process.env.NODE_ENV === "production") {
-  const publicDir = path.resolve(__dirname, "../../sar-detection/dist");
+  const publicDir = path.resolve(__dirname, "../../sar-detection/dist/public");
   app.use(express.static(publicDir));
   app.get("/{*path}", (_req, res) => {
     res.sendFile(path.join(publicDir, "index.html"));
