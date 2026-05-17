@@ -446,6 +446,16 @@ export default function CCTVPage() {
       return;
     }
 
+    const siteIsPublicIp = !isLanUrl(window.location.href) &&
+    window.location.hostname !== "localhost" &&
+    window.location.hostname !== "127.0.0.1";
+
+    if (lan && siteIsPublicIp) {
+    setStreamActive(true);
+    setStreamError("PNA_BLOCK");
+    return;
+    }
+
     if (lan) {
       // LAN: connect direct from browser. Hosted proxy can't reach private IPs.
       const snap = buildSnapshotUrl(trimmed);
