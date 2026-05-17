@@ -437,6 +437,14 @@ export default function CCTVPage() {
     setIsLan(lan);
 
     const isRtsp = trimmed.toLowerCase().startsWith("rtsp://");
+    const isCameraHttp = trimmed.toLowerCase().startsWith("http://");
+    const siteIsHttps = window.location.protocol === "https:";
+
+    if (siteIsHttps && isCameraHttp) {
+      setStreamActive(true);
+      setStreamError("HTTPS_BLOCK");
+      return;
+    }
 
     if (lan) {
       // LAN: connect direct from browser. Hosted proxy can't reach private IPs.
@@ -796,7 +804,7 @@ export default function CCTVPage() {
                   src={imgSrc}
                   alt="Live CCTV"
                   className="w-full h-full object-cover"
-                  crossOrigin="anonymous"
+                  {...(!isLan ? { crossOrigin: "anonymous" as const } : {})}
                   onLoad={() => { setStreamLoaded(true); setStreamError(null); }}
                   onError={() => {
                     setStreamError(
@@ -819,12 +827,30 @@ export default function CCTVPage() {
               )}
 
               {streamActive && streamError && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90 gap-2 p-6 text-center">
-                  <AlertTriangle className="w-8 h-8 text-orange-400" />
-                  <p className="text-sm font-mono text-orange-400 font-semibold">STREAM ERROR</p>
-                  <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">{streamError}</p>
-                </div>
-              )}
+  <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90 gap-2 p-5 text-center overflow-y-auto">
+    <AlertTriangle className="w-8 h-8 text-orange-400 shrink-0" />
+    <p className="text-sm font-mono text-orange-400 font-semibold">STREAM BLOCKED</p>
+    {streamError === "HTTPS_BLOCK" ? (
+      <div className="text-left space-y-2 max-w-xs">
+        <p className="text-xs text-zinc-300 leading-relaxed text-center">
+          Your browser blocks <strong>HTTP</strong> cameras on an <strong>HTTPS</strong> site (mixed content policy).
+        </p>
+        <div className="bg-zinc-800/80 rounded-md p-2.5 space-y-1.5 text-xs text-zinc-300">
+          <p className="text-orange-300 font-semibold uppercase text-[10px] tracking-wider">Option 1 — Tunnel via ngrok (easiest)</p>
+          <p>1. Install ngrok on your PC: <span className="font-mono text-zinc-100">ngrok.com</span></p>
+          <p>2. Run: <span className="font-mono bg-zinc-700 px-1 rounded">ngrok http 192.168.29.151:8080</span></p>
+          <p>3. Use the <span className="font-mono text-green-400">https://…ngrok-free.app</span> URL here</p>
+        </div>
+        <div className="bg-zinc-800/80 rounded-md p-2.5 space-y-1.5 text-xs text-zinc-300">
+          <p className="text-orange-300 font-semibold uppercase text-[10px] tracking-wider">Option 2 — Use HTTP site</p>
+          <p>Access your AWS site over <span className="font-mono text-green-400">http://</span> instead of <span className="font-mono text-red-400">https://</span> — the browser won't block it.</p>
+        </div>
+      </div>
+    ) : (
+      <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">{streamError}</p>
+    )}
+  </div>
+)}
 
               {!streamActive && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
