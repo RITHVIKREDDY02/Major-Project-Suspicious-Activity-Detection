@@ -440,9 +440,6 @@ export default function CCTVPage() {
     const isRtsp = trimmed.toLowerCase().startsWith("rtsp://");
     const isCameraHttp = trimmed.toLowerCase().startsWith("http://");
     const siteIsHttps = window.location.protocol === "https:";
-    const siteIsPublicIp = !isLanUrl(window.location.href) &&
-      window.location.hostname !== "localhost" &&
-      window.location.hostname !== "127.0.0.1";
 
     // Mixed content: browser will block HTTP camera URLs when site is on HTTPS
     if (siteIsHttps && isCameraHttp) {
@@ -451,9 +448,10 @@ export default function CCTVPage() {
       return;
     }
 
-    // Private Network Access (PNA): Chrome 104+ blocks requests from public IPs
-    // to private/LAN IPs, even over plain HTTP.
-    if (lan && siteIsPublicIp && !pnaBypass) {
+    // LAN camera without bypass: always warn first so the user knows about
+    // Chrome's Private Network Access block when accessing from a remote/public
+    // origin. The "Try direct" button sets pnaBypass=true and skips this check.
+    if (lan && !pnaBypass) {
       setStreamActive(true);
       setStreamError("PNA_BLOCK");
       return;
