@@ -1,12 +1,19 @@
 import { Router, type IRouter } from "express";
 import { db, monitorsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { startMonitor, stopMonitor } from "../lib/monitor-service.js";
 
 const router: IRouter = Router();
 
+function getSessionUserId(req: Parameters<Parameters<typeof router.get>[1]>[0]): number | null {
+  return ((req.session as Record<string, unknown>)?.userId as number) ?? null;
+}
+
 router.get("/monitors", async (req, res): Promise<void> => {
-  const monitors = await db.select().from(monitorsTable).orderBy(monitorsTable.createdAt);
+  const sessionUserId = getSessionUserId(req);
+  const monitors = sessionUserId !== null
+    ? await db.select().from(monitorsTable).where(eq(monitorsTable.userId, sessionUserId)).orderBy(monitorsTable.createdAt)
+    : await db.select().from(monitorsTable).orderBy(monitorsTable.createdAt);
   res.json(monitors);
 });
 
@@ -17,7 +24,7 @@ router.post("/monitors", async (req, res): Promise<void> => {
     return;
   }
 
-  const userId = (req.session as Record<string, unknown>)?.userId as number | undefined;
+  const userId = getSessionUserId(req);
 
   const [monitor] = await db.insert(monitorsTable).values({
     name,
@@ -34,7 +41,12 @@ router.post("/monitors", async (req, res): Promise<void> => {
 
 router.patch("/monitors/:id/start", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const [monitor] = await db.select().from(monitorsTable).where(eq(monitorsTable.id, id));
+  const sessionUserId = getSessionUserId(req);
+  const whereClause = sessionUserId !== null
+    ? and(eq(monitorsTable.id, id), eq(monitorsTable.userId, sessionUserId))
+    : eq(monitorsTable.id, id);
+
+  const [monitor] = await db.select().from(monitorsTable).where(whereClause);
   if (!monitor) { res.status(404).json({ error: "Monitor not found" }); return; }
 
   await db.update(monitorsTable).set({ status: "active" }).where(eq(monitorsTable.id, id));
@@ -45,7 +57,12 @@ router.patch("/monitors/:id/start", async (req, res): Promise<void> => {
 
 router.patch("/monitors/:id/stop", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const [monitor] = await db.select().from(monitorsTable).where(eq(monitorsTable.id, id));
+  const sessionUserId = getSessionUserId(req);
+  const whereClause = sessionUserId !== null
+    ? and(eq(monitorsTable.id, id), eq(monitorsTable.userId, sessionUserId))
+    : eq(monitorsTable.id, id);
+
+  const [monitor] = await db.select().from(monitorsTable).where(whereClause);
   if (!monitor) { res.status(404).json({ error: "Monitor not found" }); return; }
 
   stopMonitor(id);
@@ -56,6 +73,14 @@ router.patch("/monitors/:id/stop", async (req, res): Promise<void> => {
 
 router.delete("/monitors/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
+  const sessionUserId = getSessionUserId(req);
+  const whereClause = sessionUserId !== null
+    ? and(eq(monitorsTable.id, id), eq(monitorsTable.userId, sessionUserId))
+    : eq(monitorsTable.id, id);
+
+  const [monitor] = await db.select().from(monitorsTable).where(whereClause);
+  if (!monitor) { res.status(404).json({ error: "Monitor not found" }); return; }
+
   stopMonitor(id);
   await db.delete(monitorsTable).where(eq(monitorsTable.id, id));
   res.json({ message: "Monitor deleted" });
@@ -63,9 +88,14 @@ router.delete("/monitors/:id", async (req, res): Promise<void> => {
 
 router.patch("/monitors/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
+  const sessionUserId = getSessionUserId(req);
+  const whereClause = sessionUserId !== null
+    ? and(eq(monitorsTable.id, id), eq(monitorsTable.userId, sessionUserId))
+    : eq(monitorsTable.id, id);
+
   const { name, streamUrl, whatsappNumber, intervalSeconds, alertsEnabled } = req.body;
 
-  const [existing] = await db.select().from(monitorsTable).where(eq(monitorsTable.id, id));
+  const [existing] = await db.select().from(monitorsTable).where(whereClause);
   if (!existing) { res.status(404).json({ error: "Monitor not found" }); return; }
 
   const [updated] = await db.update(monitorsTable).set({

@@ -1,12 +1,19 @@
 import { Router, type IRouter } from "express";
 import { db, detectionsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { GetRecentActivityQueryParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-router.get("/stats/summary", async (_req, res): Promise<void> => {
-  const all = await db.select().from(detectionsTable);
+function getSessionUserId(req: Parameters<Parameters<typeof router.get>[1]>[0]): number | null {
+  return ((req.session as Record<string, unknown>)?.userId as number) ?? null;
+}
+
+router.get("/stats/summary", async (req, res): Promise<void> => {
+  const sessionUserId = getSessionUserId(req);
+  const all = sessionUserId !== null
+    ? await db.select().from(detectionsTable).where(eq(detectionsTable.userId, sessionUserId))
+    : await db.select().from(detectionsTable);
 
   const totalDetections = all.length;
   const suspiciousCount = all.filter((d) => d.status === "suspicious").length;
@@ -28,8 +35,11 @@ router.get("/stats/summary", async (_req, res): Promise<void> => {
   });
 });
 
-router.get("/stats/activity-breakdown", async (_req, res): Promise<void> => {
-  const all = await db.select().from(detectionsTable);
+router.get("/stats/activity-breakdown", async (req, res): Promise<void> => {
+  const sessionUserId = getSessionUserId(req);
+  const all = sessionUserId !== null
+    ? await db.select().from(detectionsTable).where(eq(detectionsTable.userId, sessionUserId))
+    : await db.select().from(detectionsTable);
 
   const counts: Record<string, number> = {};
   for (const d of all) {
@@ -56,13 +66,23 @@ router.get("/stats/recent-activity", async (req, res): Promise<void> => {
     return;
   }
 
+  const sessionUserId = getSessionUserId(req);
   const limit = params.data.limit ?? 10;
 
-  const recent = await db
+  const query = db
     .select()
     .from(detectionsTable)
     .orderBy(desc(detectionsTable.createdAt))
     .limit(limit);
+
+  const recent = sessionUserId !== null
+    ? await db
+        .select()
+        .from(detectionsTable)
+        .where(eq(detectionsTable.userId, sessionUserId))
+        .orderBy(desc(detectionsTable.createdAt))
+        .limit(limit)
+    : await query;
 
   res.json(
     recent.map((d) => ({
